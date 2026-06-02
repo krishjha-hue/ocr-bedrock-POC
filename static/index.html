@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OCR Model Playground</title>
+<style>
+  :root {
+    --bg: #0f1218;
+    --panel: #171b24;
+    --panel-2: #1f2430;
+    --border: #2a2f3d;
+    --text: #e7eaf1;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .region {
+    color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--panel-2); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+  }
+  header .region.warn { color: var(--warn); border-color: rgba(251, 191, 36, .3); }
+  main {
+    display: grid; grid-template-columns: 360px 1fr; gap: 16px;
+    padding: 16px; min-height: calc(100vh - 52px);
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+  }
+  .panel h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=file], textarea {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px; font: inherit;
+  }
+  textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .models { display: flex; flex-direction: column; gap: 2px; max-height: 360px; overflow-y: auto; }
+  .model-group-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 8px 4px 4px; font-weight: 600;
+  }
+  .model-group-label:first-child { margin-top: 2px; }
+  .model-group-label .count { font-weight: 400; color: var(--muted); opacity: .7; }
+  .model-group-label.additional {
+    cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center;
+  }
+  .model-group-label.additional::before { content: "▶ "; display: inline-block; transition: transform .15s; }
+  .model-group-label.additional.open::before { transform: rotate(90deg); }
+  .model-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+  .model-row:hover { background: var(--panel-2); }
+  .model-row input { margin-top: 3px; }
+  .model-row .name { font-weight: 500; }
+  .model-row .provider-tag {
+    font-size: 10px; padding: 1px 6px; margin-left: 6px; border-radius: 4px;
+    background: var(--panel-2); color: var(--muted); font-weight: 400;
+  }
+  .model-row .meta { color: var(--muted); font-size: 11.5px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button {
+    background: var(--accent); color: #0a0e16; border: none; border-radius: 6px;
+    padding: 10px 16px; font-weight: 600; cursor: pointer; font: inherit;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+  .result-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .result-card h3 { margin: 0; font-size: 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+  .badge.ok { background: rgba(74,222,128,.12); color: var(--good); }
+  .badge.err { background: rgba(248,113,113,.12); color: var(--bad); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+  .kv span:nth-child(even) { color: var(--text); }
+  pre {
+    background: #0a0e16; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px; overflow-x: auto; font-size: 12px; max-height: 360px; margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .error { color: var(--bad); font-size: 12.5px; white-space: pre-wrap; }
+  .preview { max-width: 100%; max-height: 220px; border-radius: 6px; border: 1px solid var(--border); margin-top: 6px; }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .sticky-bar {
+    position: sticky; bottom: 0; background: var(--bg); padding-top: 10px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .agreement {
+    display: grid; grid-template-columns: max-content repeat(auto-fit, minmax(120px, 1fr)); gap: 2px;
+    font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .agreement > div { padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .agreement .head { background: var(--panel-2); font-weight: 600; color: var(--muted); }
+  .agreement .field-name { font-weight: 500; color: var(--text); }
+  .value-match { color: var(--good); }
+  .value-diff { color: var(--warn); }
+  .value-null { color: var(--muted); font-style: italic; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tabs button { background: var(--panel-2); color: var(--muted); padding: 4px 10px; font-size: 12px; border: 1px solid var(--border); }
+  .tabs button.active { background: var(--accent); color: #0a0e16; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>OCR Model Playground</h1>
+  <div class="region" id="region" title="Click for region info">region: loading…</div>
+</header>
+
+<main>
+  <aside class="panel">
+    <h2>1. Image</h2>
+    <input type="file" id="image" accept="image/png,image/jpeg,image/webp,image/gif" />
+    <img id="preview" class="preview" hidden />
+    <div class="hint">Max 4 MB. PNG / JPEG / WEBP / GIF.</div>
+
+    <div style="height: 14px"></div>
+    <h2>2. Models</h2>
+    <div class="models" id="models"></div>
+    <div class="row" style="margin-top:6px">
+      <button class="secondary" id="selectAll">Select all</button>
+      <button class="secondary" id="selectNone">None</button>
+    </div>
+
+    <div style="height: 14px"></div>
+    <h2>3. Prompts</h2>
+    <label for="sys">System prompt</label>
+    <textarea id="sys" rows="3"></textarea>
+    <div style="height: 8px"></div>
+    <label for="usr">User prompt</label>
+    <textarea id="usr" rows="14"></textarea>
+
+    <div class="sticky-bar">
+      <button id="run">Run</button>
+      <button class="secondary" id="resetPrompts">Reset prompts</button>
+      <span id="status" class="hint"></span>
+    </div>
+  </aside>
+
+  <section>
+    <div class="panel" id="summaryPanel" hidden>
+      <h2>Field agreement</h2>
+      <div class="agreement" id="agreement"></div>
+      <div class="hint" style="margin-top:6px">Green = all models agree. Yellow = they disagree on this field.</div>
+    </div>
+    <div style="height: 12px"></div>
+    <div class="results" id="results"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { models: [], defaults: { system: "", user: "" } };
+
+async function loadInit() {
+  const [mResp, pResp] = await Promise.all([
+    fetch("/api/models").then((r) => r.json()),
+    fetch("/api/prompts").then((r) => r.json()),
+  ]);
+  state.models = mResp.models;
+  state.defaults = pResp;
+  const regionEl = $("region");
+  const effective = mResp.effective_region || mResp.region;
+  regionEl.textContent = `region: ${effective}`;
+  if (effective !== "ap-south-1") {
+    regionEl.classList.add("warn");
+    regionEl.title =
+      `Backend boto3 region: ${effective}. Configured: ${mResp.region}. ` +
+      `This app ships with Mumbai (ap-south-1) defaults. ` +
+      `Fix: export BEDROCK_REGION=ap-south-1 and restart uvicorn in the same terminal. ` +
+      `Check /api/whoami for full diagnostics.`;
+  } else {
+    regionEl.title = `Backend is using ${effective}. Visit /api/whoami for details.`;
+  }
+  renderModels();
+  $("sys").value = pResp.system;
+  $("usr").value = pResp.user;
+}
+
+function renderModels() {
+  const host = $("models");
+  host.innerHTML = "";
+  const defaults = state.models.filter((m) => m.group === "default");
+  const extras = state.models.filter((m) => m.group === "additional");
+
+  // Recommended section (always expanded)
+  if (defaults.length) {
+    const label = document.createElement("div");
+    label.className = "model-group-label";
+    label.innerHTML = `Recommended for Hindi OCR <span class="count">${defaults.length}</span>`;
+    host.appendChild(label);
+    defaults.forEach((m) => host.appendChild(buildModelRow(m, true)));
+  }
+
+  // Additional section (collapsed by default)
+  if (extras.length) {
+    const header = document.createElement("div");
+    header.className = "model-group-label additional";
+    header.innerHTML = `Additional models <span class="count">${extras.length}</span>`;
+    host.appendChild(header);
+
+    const group = document.createElement("div");
+    group.id = "additionalGroup";
+    group.style.display = "none";
+    extras.forEach((m) => group.appendChild(buildModelRow(m, false)));
+    host.appendChild(group);
+
+    header.addEventListener("click", () => {
+      const open = group.style.display !== "none";
+      group.style.display = open ? "none" : "block";
+      header.classList.toggle("open", !open);
+    });
+  }
+}
+
+function buildModelRow(m, preChecked) {
+  const row = document.createElement("label");
+  row.className = "model-row";
+  const isSonnet45 = m.label.startsWith("Claude Sonnet 4.5");
+  row.innerHTML = `
+    <input type="checkbox" value="${m.id}" ${preChecked && isSonnet45 ? "checked" : ""}>
+    <div>
+      <div class="name">${escapeHtml(m.label)}<span class="provider-tag">${escapeHtml(m.provider)}</span></div>
+      <div class="meta">${escapeHtml(m.notes || "")}</div>
+    </div>`;
+  return row;
+}
+
+function getSelectedModels() {
+  return Array.from(document.querySelectorAll(".model-row input:checked")).map((el) => el.value);
+}
+
+$("image").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  const p = $("preview");
+  if (!f) { p.hidden = true; return; }
+  p.src = URL.createObjectURL(f);
+  p.hidden = false;
+});
+
+$("selectAll").addEventListener("click", () =>
+  document.querySelectorAll(".model-row").forEach((row) => {
+    if (row.offsetParent !== null) row.querySelector("input").checked = true;
+  })
+);
+$("selectNone").addEventListener("click", () =>
+  document.querySelectorAll(".model-row input").forEach((el) => (el.checked = false))
+);
+$("resetPrompts").addEventListener("click", () => {
+  $("sys").value = state.defaults.system;
+  $("usr").value = state.defaults.user;
+});
+
+$("run").addEventListener("click", async () => {
+  const file = $("image").files[0];
+  const ids = getSelectedModels();
+  const sys = $("sys").value;
+  const usr = $("usr").value;
+  if (!file) return alert("Pick an image first.");
+  if (!ids.length) return alert("Pick at least one model.");
+  if (!usr.trim()) return alert("User prompt is empty.");
+
+  const btn = $("run");
+  btn.disabled = true;
+  $("status").textContent = `running ${ids.length} model(s)…`;
+  $("results").innerHTML = "";
+  $("summaryPanel").hidden = true;
+
+  const fd = new FormData();
+  fd.append("image", file);
+  fd.append("model_ids", ids.join(","));
+  fd.append("system_prompt", sys);
+  fd.append("user_prompt", usr);
+
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/api/run", { method: "POST", body: fd });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || "request failed");
+    }
+    const data = await r.json();
+    renderResults(data);
+    $("status").textContent = `done in ${((performance.now() - t0) / 1000).toFixed(1)}s`;
+  } catch (e) {
+    $("status").textContent = "";
+    alert("Run failed: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderResults(data) {
+  const labelFor = (id) => state.models.find((m) => m.id === id)?.label || id;
+  const host = $("results");
+  host.innerHTML = "";
+  for (const res of data.results) {
+    const card = document.createElement("div");
+    card.className = "result-card";
+    const badge = res.ok
+      ? `<span class="badge ok">ok</span>`
+      : `<span class="badge err">error</span>`;
+    card.innerHTML = `
+      <h3>${labelFor(res.model_id)} ${badge}</h3>
+      <div class="kv">
+        <span>latency</span><span>${res.latency_ms} ms</span>
+        <span>tokens in / out</span><span>${res.input_tokens ?? "-"} / ${res.output_tokens ?? "-"}</span>
+      </div>
+      ${res.error ? `<div class="error">${escapeHtml(res.error)}</div>` : ""}
+      <div class="tabs">
+        <button class="active" data-tab="json">Parsed JSON</button>
+        <button data-tab="raw">Raw output</button>
+      </div>
+      <pre class="pane pane-json">${escapeHtml(JSON.stringify(res.parsed_json, null, 2) || "(no JSON extracted)")}</pre>
+      <pre class="pane pane-raw" hidden>${escapeHtml(res.raw_text || "(empty)")}</pre>`;
+    card.querySelectorAll(".tabs button").forEach((b) => {
+      b.addEventListener("click", () => {
+        card.querySelectorAll(".tabs button").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        card.querySelector(".pane-json").hidden = b.dataset.tab !== "json";
+        card.querySelector(".pane-raw").hidden = b.dataset.tab !== "raw";
+      });
+    });
+    host.appendChild(card);
+  }
+  renderAgreement(data.results);
+}
+
+function renderAgreement(results) {
+  const parsed = results.filter((r) => r.parsed_json && typeof r.parsed_json === "object");
+  if (parsed.length < 2) {
+    $("summaryPanel").hidden = true;
+    return;
+  }
+  const fields = new Set();
+  parsed.forEach((r) => Object.keys(r.parsed_json).forEach((k) => fields.add(k)));
+  const labelFor = (id) => state.models.find((m) => m.id === id)?.label || id;
+
+  const host = $("agreement");
+  host.style.gridTemplateColumns = `max-content repeat(${parsed.length}, minmax(120px, 1fr))`;
+  host.innerHTML = "";
+  const head = ["field", ...parsed.map((r) => labelFor(r.model_id))];
+  head.forEach((h) => host.insertAdjacentHTML("beforeend", `<div class="head">${escapeHtml(h)}</div>`));
+
+  for (const f of fields) {
+    const values = parsed.map((r) => r.parsed_json[f]);
+    const stringified = values.map((v) => JSON.stringify(v));
+    const allMatch = stringified.every((v) => v === stringified[0]);
+    host.insertAdjacentHTML("beforeend", `<div class="field-name">${escapeHtml(f)}</div>`);
+    for (const v of values) {
+      const isNull = v === null || v === undefined || v === "";
+      const cls = isNull ? "value-null" : allMatch ? "value-match" : "value-diff";
+      const display = isNull ? "null" : typeof v === "string" ? v : JSON.stringify(v);
+      host.insertAdjacentHTML("beforeend", `<div class="${cls}">${escapeHtml(display)}</div>`);
+    }
+  }
+  $("summaryPanel").hidden = false;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+loadInit();
+</script>
+</body>
+</html>
